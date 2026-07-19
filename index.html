@@ -397,24 +397,24 @@ function cleanName(n) { return n.replace(/\\s+/g,'').trim(); }
 function renderOverview() {
   const students = RAW_DATA.students;
   const names = Object.keys(students);
-  let totalTraining=0,totalDuty=0,totalDeduction=0,totalRadio=0,totalSim=0;
+  let totalTraining=0,totalDuty=0,totalDeduction=0,totalRadio=0,totalSim=0,studentCount=0;
   names.forEach(n => {
     const m = students[n].monthly[currentMonth];
-    if (m) { totalTraining+=m.total_training_hours||0; totalDuty+=m.total_duty_hours||0; totalDeduction+=m.total_deduction||0; totalRadio+=m.actual_radio_hours||0; totalSim+=m.sim_count||0; }
+    if (m) { studentCount++; totalTraining+=m.total_training_hours||0; totalDuty+=m.total_duty_hours||0; totalDeduction+=m.total_deduction||0; totalRadio+=m.actual_radio_hours||0; totalSim+=m.sim_count||0; }
   });
   const avgRatio = totalDuty>0?totalTraining/totalDuty:0;
   const instructors = RAW_DATA.instructors;
-  let instTeach=0, instDed=0;
-  Object.keys(instructors).forEach(n => { const m=instructors[n].monthly[currentMonth]; if(m){instTeach+=m.total_teaching_hours||0;instDed+=m.deduction_count||0;} });
+  let instTeach=0, instDed=0, instCount=0;
+  Object.keys(instructors).forEach(n => { const m=instructors[n].monthly[currentMonth]; if(m){instCount++;instTeach+=m.total_teaching_hours||0;instDed+=m.deduction_count||0;} });
 
   document.getElementById('overviewStats').innerHTML = `
-    <div class="stat-card"><div class="value">${names.length}</div><div class="label">在册学员</div></div>
+    <div class="stat-card"><div class="value">${studentCount}</div><div class="label">${currentMonth}在册学员</div></div>
     <div class="stat-card"><div class="value">${fmt(totalTraining,0)}</div><div class="label">${currentMonth}总见习(h)</div></div>
     <div class="stat-card"><div class="value">${fmt(totalRadio,0)}</div><div class="label">${currentMonth}持话筒(h)</div></div>
     <div class="stat-card danger"><div class="value">${fmt(totalDeduction,0)}</div><div class="label">${currentMonth}实操总扣分</div></div>
     <div class="stat-card success"><div class="value">${pct(avgRatio)}</div><div class="label">平均见习/执勤比</div></div>
     <div class="stat-card purple"><div class="value">${fmt(totalSim,0)}</div><div class="label">${currentMonth}模拟机训练(次)</div></div>
-    <div class="stat-card warning"><div class="value">${Object.keys(instructors).length}</div><div class="label">在册教员</div></div>
+    <div class="stat-card warning"><div class="value">${instCount}</div><div class="label">${currentMonth}在册教员</div></div>
     <div class="stat-card"><div class="value">${fmt(instTeach,0)}</div><div class="label">${currentMonth}教员带教(h)</div></div>
   `;
   renderStudentTrendChart();
