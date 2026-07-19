@@ -464,7 +464,7 @@ function renderGlobalMonth() {
 }
 function setGlobalMonth(m) {
   currentMonth = m;
-  currentDeductMonth = ['4月','5月','6月'].includes(m) ? m : '6月';
+  currentDeductMonth = ['1月','2月','3月','4月','5月','6月'].includes(m) ? m : '6月';
   renderGlobalMonth();
   renderOverview();
   renderStudentTable();
