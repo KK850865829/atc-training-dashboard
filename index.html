@@ -1346,7 +1346,7 @@ function renderNightDuty() {
       const secondHalfBg = secondHalfZero ? 'background:#fff1f0;color:#cf1322;font-weight:600' : '';
       const failReasons = [];
       if(!nightOk) failReasons.push('个数不达标');
-      if(!halfOk) { if(firstHalfZero) failReasons.push('上半夜为0'); if(secondHalfZero) failReasons.push('下半夜为0'); }
+      if(!halfOk) failReasons.push('守夜类型不达标');
       if(!hoursOk) failReasons.push('时长不达标');
       const statusBadge = allOk
         ? '<span class="badge badge-success">合规</span>'
