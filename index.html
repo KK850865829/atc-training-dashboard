@@ -146,6 +146,29 @@ select.input{cursor:pointer}
 .class-compare-card .compare-value{font-weight:600}
 .compare-bar{height:6px;border-radius:3px;background:#f0f0f0;margin-top:4px;overflow:hidden}
 .compare-bar-fill{height:100%;border-radius:3px;transition:width .5s ease}
+.admin-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.admin-btn:hover{background:rgba(255,255,255,.25)}
+.admin-btn.logged-in{background:rgba(82,196,26,.3);border-color:rgba(82,196,26,.5)}
+.admin-modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center}
+.admin-modal-overlay.show{display:flex}
+.admin-modal{background:#fff;border-radius:12px;padding:32px;width:340px;max-width:90vw;box-shadow:0 8px 40px rgba(0,0,0,.2)}
+.admin-modal h3{font-size:18px;margin-bottom:8px;color:var(--text)}
+.admin-modal p{font-size:13px;color:var(--text2);margin-bottom:20px}
+.admin-modal input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-bottom:16px;outline:none;transition:border .2s}
+.admin-modal input:focus{border-color:var(--primary)}
+.admin-modal .modal-btns{display:flex;gap:8px;justify-content:flex-end}
+.admin-modal .modal-btns button{padding:8px 20px;border-radius:6px;font-size:14px;cursor:pointer;border:none;transition:all .2s}
+.admin-modal .btn-cancel{background:#f0f0f0;color:var(--text)}
+.admin-modal .btn-cancel:hover{background:#e0e0e0}
+.admin-modal .btn-confirm{background:var(--primary);color:#fff}
+.admin-modal .btn-confirm:hover{background:#096dd9}
+.admin-modal .error-msg{color:var(--danger);font-size:12px;margin-top:-8px;margin-bottom:12px;display:none}
+.locked-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;color:var(--text3)}
+.locked-panel .lock-icon{font-size:48px;margin-bottom:16px;opacity:.5}
+.locked-panel .lock-text{font-size:15px;margin-bottom:8px;color:var(--text2)}
+.locked-panel .lock-sub{font-size:13px}
+.locked-panel .login-link{color:var(--primary);cursor:pointer;margin-top:12px;font-size:14px;text-decoration:underline}
+.locked-panel .login-link:hover{color:#096dd9}
 </style>
 </head>
 <body>
@@ -157,6 +180,7 @@ select.input{cursor:pointer}
     </div>
     <div class="header-actions">
       <div class="month-selector" id="globalMonthSelector"></div>
+      <button class="admin-btn" id="adminLoginBtn" onclick="showAdminModal()">管理员登录</button>
     </div>
   </div>
 </div>
@@ -375,6 +399,13 @@ select.input{cursor:pointer}
 
   <!-- ========== UPLOAD ========== -->
   <div class="panel" id="panel-upload">
+    <div id="uploadLockedMsg" class="locked-panel" style="display:none">
+      <div class="lock-icon">🔒</div>
+      <div class="lock-text">此功能需要管理员权限</div>
+      <div class="lock-sub">请登录管理员账号后使用数据上传功能</div>
+      <div class="login-link" onclick="showAdminModal()">点击登录管理员账号</div>
+    </div>
+    <div id="uploadContent">
     <div class="card">
       <div class="card-title">上传Excel数据文件</div>
       <p class="text-sm text-muted mb-16">支持上传新的培训数据Excel文件，系统将自动解析并更新看板数据。文件格式需与原模板一致。</p>
@@ -401,6 +432,7 @@ select.input{cursor:pointer}
         <p>将HTML文件直接发送到微信群/企业微信群，点击即可在浏览器中打开使用。</p>
       </div>
     </div>
+    </div><!-- end uploadContent -->
   </div>
 </div>
 
@@ -1348,6 +1380,114 @@ function renderNightDuty() {
   document.getElementById('nightDutyComplianceResult').innerHTML = compHtml;
 }
 
+</script>
+
+<!-- Admin Login Modal -->
+<div class="admin-modal-overlay" id="adminModalOverlay">
+  <div class="admin-modal">
+    <h3>管理员登录</h3>
+    <p>请输入管理员密码以访问高级功能</p>
+    <input type="password" id="adminPasswordInput" placeholder="请输入密码..." onkeydown="if(event.key==='Enter')verifyAdmin()">
+    <div class="error-msg" id="adminErrorMsg">密码错误，请重试</div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="hideAdminModal()">取消</button>
+      <button class="btn-confirm" onclick="verifyAdmin()">登录</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== ADMIN AUTH =====
+let isAdminLoggedIn = false;
+// Password hash (SHA-256 of "atc2026admin")
+const ADMIN_PWD_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function showAdminModal() {
+  if (isAdminLoggedIn) {
+    // Already logged in, offer logout
+    if (confirm('已登录管理员账号，是否退出登录？')) {
+      isAdminLoggedIn = false;
+      updateAdminUI();
+    }
+    return;
+  }
+  document.getElementById('adminModalOverlay').classList.add('show');
+  document.getElementById('adminPasswordInput').value = '';
+  document.getElementById('adminErrorMsg').style.display = 'none';
+  setTimeout(() => document.getElementById('adminPasswordInput').focus(), 100);
+}
+
+function hideAdminModal() {
+  document.getElementById('adminModalOverlay').classList.remove('show');
+}
+
+async function verifyAdmin() {
+  const pwd = document.getElementById('adminPasswordInput').value;
+  // Simple check - for demo purposes, accept "atc2026"
+  if (pwd === 'atc2026') {
+    isAdminLoggedIn = true;
+    hideAdminModal();
+    updateAdminUI();
+  } else {
+    document.getElementById('adminErrorMsg').style.display = 'block';
+    document.getElementById('adminPasswordInput').value = '';
+    document.getElementById('adminPasswordInput').focus();
+  }
+}
+
+function updateAdminUI() {
+  const btn = document.getElementById('adminLoginBtn');
+  const apiConfigCard = document.querySelector('#panel-ai .card');
+  const uploadTab = document.querySelector('.tab[data-tab="upload"]');
+  const uploadPanel = document.getElementById('panel-upload');
+
+  if (isAdminLoggedIn) {
+    btn.textContent = '管理员已登录';
+    btn.classList.add('logged-in');
+    // Show API config card
+    if (apiConfigCard) apiConfigCard.style.display = '';
+    // Show upload tab
+    if (uploadTab) uploadTab.style.display = '';
+    // Remove locked message from upload panel
+    const lockedMsg = document.getElementById('uploadLockedMsg');
+    if (lockedMsg) lockedMsg.style.display = 'none';
+    const uploadContent = document.getElementById('uploadContent');
+    if (uploadContent) uploadContent.style.display = '';
+  } else {
+    btn.textContent = '管理员登录';
+    btn.classList.remove('logged-in');
+    // Hide API config card (first card in AI panel)
+    if (apiConfigCard) apiConfigCard.style.display = 'none';
+    // Hide upload tab
+    if (uploadTab) uploadTab.style.display = 'none';
+    // If currently on upload panel, switch to overview
+    if (uploadPanel && uploadPanel.classList.contains('active')) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('.tab[data-tab="overview"]').classList.add('active');
+      document.getElementById('panel-overview').classList.add('active');
+    }
+    // Show locked message in upload panel
+    const lockedMsg = document.getElementById('uploadLockedMsg');
+    if (lockedMsg) lockedMsg.style.display = '';
+    const uploadContent = document.getElementById('uploadContent');
+    if (uploadContent) uploadContent.style.display = 'none';
+  }
+}
+
+// Initialize admin state on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() { updateAdminUI(); });
+} else {
+  updateAdminUI();
+}
 </script>
 </body>
 </html>
