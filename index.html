@@ -1335,17 +1335,22 @@ function renderNightDuty() {
       const hoursOk = d.night_hours >= req.req_hours;
       const firstHalfZero = d.first_half === 0;
       const secondHalfZero = d.second_half === 0;
-      const allOk = nightOk && hoursOk;
+      const halfOk = !firstHalfZero && !secondHalfZero;
+      const allOk = nightOk && hoursOk && halfOk;
 
       if(allOk) compliantStudents.push(name);
 
       const nightBg = nightOk ? '' : 'background:#fff1f0;color:#cf1322;font-weight:600';
       const hoursBg = hoursOk ? '' : 'background:#fff1f0;color:#cf1322;font-weight:600';
-      const firstHalfBg = firstHalfZero ? 'background:#fffbe6;color:#d48806;font-weight:600' : '';
-      const secondHalfBg = secondHalfZero ? 'background:#fffbe6;color:#d48806;font-weight:600' : '';
+      const firstHalfBg = firstHalfZero ? 'background:#fff1f0;color:#cf1322;font-weight:600' : '';
+      const secondHalfBg = secondHalfZero ? 'background:#fff1f0;color:#cf1322;font-weight:600' : '';
+      const failReasons = [];
+      if(!nightOk) failReasons.push('个数不达标');
+      if(!halfOk) { if(firstHalfZero) failReasons.push('上半夜为0'); if(secondHalfZero) failReasons.push('下半夜为0'); }
+      if(!hoursOk) failReasons.push('时长不达标');
       const statusBadge = allOk
         ? '<span class="badge badge-success">合规</span>'
-        : `<span class="badge badge-danger">${!nightOk?'个数不达标':''}${!nightOk&&!hoursOk?'、':''}${!hoursOk?'时长不达标':''}</span>`;
+        : `<span class="badge badge-danger">${failReasons.join('、')}</span>`;
 
       tablesHtml += `<tr>
         <td><b>${name}</b></td>
@@ -1375,7 +1380,7 @@ function renderNightDuty() {
       </div>
     </div>
     <p style="font-size:13px;line-height:2"><b>${month}守夜个数、守夜类型、守夜总执勤同时满足要求的有：</b>${compliantStr}。</p>
-    <p style="font-size:11px;color:var(--text3);margin-top:8px">注：上半夜或下半夜为0的学员已标黄提醒，表示该类型守夜未参与。红色底色表示该项指标未达到当月要求。</p>
+    <p style="font-size:11px;color:var(--text3);margin-top:8px">注：上半夜或下半夜为0的学员已标红，视为不合规。红色底色表示该项指标未达到当月要求。</p>
   </div>`;
   document.getElementById('nightDutyComplianceResult').innerHTML = compHtml;
 }
