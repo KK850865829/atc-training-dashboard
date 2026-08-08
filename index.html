@@ -1428,11 +1428,9 @@ renderStudentTable();
 renderInstructorTable();
 renderDeductions();
 renderSimulator();
-renderNightDuty();
 updateAINameOptions();
-</script>
+renderNightDuty();
 
-<script>
 // Service Worker registration for offline support
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
@@ -1624,7 +1622,7 @@ function computeMonthlySchedule(year, monthIdx) {
 }
 
 function getScheduleSummary(month) {
-  const monthMap = {'1月':0,'2月':1,'3月':2,'4月':3,'5月':4,'6月':5};
+  const monthMap = {'1月':0,'2月':1,'3月':2,'4月':3,'5月':4,'6月':5,'7月':6};
   const mIdx = monthMap[month];
   if(mIdx === undefined) return null;
   const year = 2026;
