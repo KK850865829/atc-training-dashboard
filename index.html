@@ -1012,16 +1012,311 @@ fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.ta
 async function handleFile(file) {
   const status=document.getElementById('uploadStatus');
   status.style.display='block';
-  status.innerHTML='<div class="card" style="border-left:3px solid #1890ff"><p>正在解析文件: '+file.name+'</p><div class="progress-bar"><div class="fill" style="width:30%;background:var(--primary)"></div></div></div>';
+  status.innerHTML='<div class="card" style="border-left:3px solid #1890ff"><p>正在解析文件: '+file.name+'</p><div class="progress-bar"><div class="fill" style="width:20%;background:var(--primary)"></div></div></div>';
 
   try {
     const data=await file.arrayBuffer();
     const workbook=XLSX.read(data,{type:'array'});
-    status.innerHTML='<div class="card" style="border-left:3px solid #52c41a"><p style="font-weight:600;color:var(--success)">文件解析成功！</p><p class="text-sm text-muted" style="margin-top:4px">检测到 '+workbook.SheetNames.length+' 个工作表：'+workbook.SheetNames.join('、')+'</p><p class="text-sm text-muted" style="margin-top:8px">提示：请将文件发送给管理员进行数据更新，或刷新页面后重新上传符合模板格式的文件。</p></div>';
-    showToast('文件解析成功！');
+    const sheets=workbook.SheetNames;
+    status.innerHTML='<div class="card" style="border-left:3px solid #1890ff"><p>检测到 '+sheets.length+' 个工作表，正在解析数据...</p><div class="progress-bar"><div class="fill" style="width:40%;background:var(--primary)"></div></div></div>';
+
+    // Categorize sheets by type
+    const studentSheets=[], instructorSheets=[], deductionSheets=[], simSheets=[];
+    let progressSheet=null;
+
+    sheets.forEach(name=>{
+      if(name.includes('总进程')){progressSheet=name;return;}
+      if(name.includes('扣分')){const m=name.match(/(\d+)月/);if(m)deductionSheets.push({name,month:m[1]+'月'});return;}
+      if(name.includes('模拟机')){simSheets.push(name);return;}
+      if(name.includes('学员')){const m=name.match(/(\d+)月/);if(m)studentSheets.push({name,month:m[1]+'月'});return;}
+      if(name.includes('教员')){const m=name.match(/(\d+)月/);if(m)instructorSheets.push({name,month:m[1]+'月'});return;}
+    });
+
+    status.innerHTML='<div class="card" style="border-left:3px solid #1890ff"><p>正在提取学员数据...</p><div class="progress-bar"><div class="fill" style="width:50%;background:var(--primary)"></div></div></div>';
+
+    // Parse all sheets
+    const newStudents={}, newInstructors={}, newDeductions={}, newNightDuty={};
+    let newSimPlans=[], newProgress=[];
+
+    studentSheets.forEach(({name,month})=>{
+      const r=parseStudentSheet(workbook.Sheets[name],month);
+      Object.keys(r.students).forEach(k=>{
+        if(!newStudents[k])newStudents[k]=r.students[k];
+        else Object.assign(newStudents[k].monthly,r.students[k].monthly);
+      });
+      Object.keys(r.nightDuty).forEach(k=>{
+        if(!newNightDuty[month])newNightDuty[month]={};
+        newNightDuty[month][k]=r.nightDuty[k];
+      });
+    });
+
+    status.innerHTML='<div class="card" style="border-left:3px solid #1890ff"><p>正在提取教员数据...</p><div class="progress-bar"><div class="fill" style="width:60%;background:var(--primary)"></div></div></div>';
+
+    instructorSheets.forEach(({name,month})=>{
+      const r=parseInstructorSheet(workbook.Sheets[name],month);
+      Object.keys(r).forEach(k=>{
+        if(!newInstructors[k])newInstructors[k]=r[k];
+        else Object.assign(newInstructors[k].monthly,r[k].monthly);
+      });
+    });
+
+    deductionSheets.forEach(({name,month})=>{
+      newDeductions[month]=parseDeductionSheet(workbook.Sheets[name]);
+    });
+
+    simSheets.forEach(name=>{
+      newSimPlans=newSimPlans.concat(parseSimPlanSheet(workbook.Sheets[name]));
+    });
+
+    if(progressSheet){
+      newProgress=parseProgressSheet(workbook.Sheets[progressSheet]);
+    }
+
+    status.innerHTML='<div class="card" style="border-left:3px solid #1890ff"><p>正在更新看板数据...</p><div class="progress-bar"><div class="fill" style="width:80%;background:var(--primary)"></div></div></div>';
+
+    // Collect all months and update MONTHS
+    const allMonths=new Set();
+    studentSheets.forEach(s=>allMonths.add(s.month));
+    instructorSheets.forEach(s=>allMonths.add(s.month));
+    deductionSheets.forEach(s=>allMonths.add(s.month));
+    const sortedMonths=[...allMonths].sort((a,b)=>parseInt(a)-parseInt(b));
+    if(sortedMonths.length>0){
+      MONTHS.length=0;
+      sortedMonths.forEach(m=>MONTHS.push(m));
+      currentMonth=sortedMonths[sortedMonths.length-1];
+      currentDeductMonth=['4月','5月','6月'].find(m=>allMonths.has(m))||currentMonth;
+    }
+
+    // Update RAW_DATA
+    RAW_DATA.students=newStudents;
+    RAW_DATA.instructors=newInstructors;
+    RAW_DATA.deduction_details=newDeductions;
+    RAW_DATA.night_duty=newNightDuty;
+    RAW_DATA.simulator_plans={'次月':newSimPlans};
+    if(newProgress.length>0)RAW_DATA.overall_progress=newProgress;
+
+    // Re-render everything
+    renderGlobalMonth();
+    populateMonthSelect('studentMonth');
+    populateMonthSelect('instructorMonth');
+    renderOverview();
+    renderStudentTable();
+    renderInstructorTable();
+    renderDeductions();
+    renderSimulator();
+    renderNightDuty();
+    updateAINameOptions();
+
+    const sc=Object.keys(newStudents).length;
+    const ic=Object.keys(newInstructors).length;
+    status.innerHTML='<div class="card" style="border-left:3px solid #52c41a"><p style="font-weight:600;color:var(--success)">数据更新成功！</p><p class="text-sm text-muted" style="margin-top:4px">已解析 '+sc+' 名学员、'+ic+' 名教员的数据，覆盖 '+sortedMonths.join('、')+' 共 '+sortedMonths.length+' 个月</p><p class="text-sm text-muted" style="margin-top:4px">看板所有模块已实时更新。</p></div>';
+    showToast('数据更新成功！共 '+sc+' 名学员、'+ic+' 名教员');
   } catch(err) {
+    console.error('Parse error:',err);
     status.innerHTML='<div class="card" style="border-left:3px solid #ff4d4f"><p style="color:var(--danger)">文件解析失败: '+err.message+'</p><p class="text-sm text-muted">请确保文件格式正确。</p></div>';
   }
+}
+
+// ===== EXCEL PARSING HELPERS =====
+function pNum(v){if(v===null||v===undefined||v===''||v==='无')return 0;const n=parseFloat(v);return isNaN(n)?0:n;}
+function pStr(v){return(v===null||v===undefined)?'':String(v).trim();}
+
+function findHdr(ws,kw,minR,maxR,minHits){
+  minR=minR||0;maxR=maxR||15;minHits=minHits||2;
+  for(let r=minR;r<=maxR;r++){
+    let hits=0;
+    for(let c=0;c<30;c++){const v=pStr(ws[XLSX.utils.encode_cell({r,c})]?.v);if(v&&kw.some(k=>v.includes(k)))hits++;}
+    if(hits>=minHits)return r;
+  }
+  return-1;
+}
+
+function parseStudentSheet(ws,month){
+  const students={},nightDuty={};
+  const hr=findHdr(ws,['学员','届别','组别','EC位'],0,15,3);
+  if(hr<0)return{students,nightDuty};
+
+  const ci={};
+  for(let c=0;c<40;c++){
+    const v=pStr(ws[XLSX.utils.encode_cell({r:hr,c})]?.v);
+    if(v==='学员'&&!ci.name)ci.name=c;
+    else if(v.includes('届别'))ci.class=c;
+    else if(v.includes('组别'))ci.group=c;
+    else if(v==='EC位见习时长')ci.ec=c;
+    else if(v==='PLC位见习时长')ci.plc=c;
+    else if(v.includes('保护期'))ci.prot=c;
+    else if(v==='总见习时长')ci.totalTrain=c;
+    else if(v.includes('持话筒')&&v.includes('EC'))ci.radioEcR=c;
+    else if(v.includes('实际持话筒'))ci.radio=c;
+    else if(v==='实操总扣分')ci.deduct=c;
+    else if(v.includes('每小时扣分'))ci.deductHr=c;
+    else if(v.includes('实操排名'))ci.rank=c;
+    else if(v==='总执勤时长')ci.duty=c;
+    else if(v.includes('总见习')&&v.includes('总执勤'))ci.trainDutyR=c;
+    else if(v.includes('责任教员'))ci.instHr=c;
+    else if(v==='守夜个数')ci.night=c;
+    else if(v.includes('见习守夜个数'))ci.tNight=c;
+    else if(v.includes('上半夜'))ci.h1=c;
+    else if(v.includes('下半夜'))ci.h2=c;
+    else if(v==='守夜见习时长')ci.nHrs=c;
+    else if(v==='守夜总执勤')ci.nDuty=c;
+    else if(v.includes('守夜见习')&&v.includes('守夜总执勤'))ci.nRatio=c;
+    else if(v.includes('模拟机个数'))ci.sim=c;
+    else if(v.includes('校飞'))ci.flight=c;
+  }
+
+  for(let r=hr+1;r<300;r++){
+    const nm=pStr(ws[XLSX.utils.encode_cell({r,c:ci.name})]?.v);
+    if(!nm)break;
+
+    if(!students[nm])students[nm]={name:nm,class:pStr(ws[XLSX.utils.encode_cell({r,c:ci.class})]?.v),group:pStr(ws[XLSX.utils.encode_cell({r,c:ci.group})]?.v),monthly:{}};
+
+    students[nm].monthly[month]={
+      ec_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.ec})]?.v),
+      plc_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.plc})]?.v),
+      protection_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.prot})]?.v),
+      total_training_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.totalTrain})]?.v),
+      actual_radio_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.radio})]?.v),
+      total_deduction:pNum(ws[XLSX.utils.encode_cell({r,c:ci.deduct})]?.v),
+      deduction_per_hour:pNum(ws[XLSX.utils.encode_cell({r,c:ci.deductHr})]?.v),
+      ranking:pStr(ws[XLSX.utils.encode_cell({r,c:ci.rank})]?.v),
+      total_duty_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.duty})]?.v),
+      training_duty_ratio:pStr(ws[XLSX.utils.encode_cell({r,c:ci.trainDutyR})]?.v),
+      radio_ec_ratio:pStr(ws[XLSX.utils.encode_cell({r,c:ci.radioEcR})]?.v),
+      instructor_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.instHr})]?.v),
+      night_count:pNum(ws[XLSX.utils.encode_cell({r,c:ci.night})]?.v),
+      training_night_count:pNum(ws[XLSX.utils.encode_cell({r,c:ci.tNight})]?.v),
+      first_half_night:pNum(ws[XLSX.utils.encode_cell({r,c:ci.h1})]?.v),
+      second_half_night:pNum(ws[XLSX.utils.encode_cell({r,c:ci.h2})]?.v),
+      night_training_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.nHrs})]?.v),
+      night_total_duty:pNum(ws[XLSX.utils.encode_cell({r,c:ci.nDuty})]?.v),
+      night_ratio:pStr(ws[XLSX.utils.encode_cell({r,c:ci.nRatio})]?.v),
+      sim_count:pNum(ws[XLSX.utils.encode_cell({r,c:ci.sim})]?.v),
+      flight_check_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.flight})]?.v)
+    };
+
+    const nc=pNum(ws[XLSX.utils.encode_cell({r,c:ci.night})]?.v);
+    if(nc>0)nightDuty[nm]={group:pStr(ws[XLSX.utils.encode_cell({r,c:ci.group})]?.v),night_count:nc,first_half:pNum(ws[XLSX.utils.encode_cell({r,c:ci.h1})]?.v),second_half:pNum(ws[XLSX.utils.encode_cell({r,c:ci.h2})]?.v),night_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.nDuty})]?.v)};
+  }
+  return{students,nightDuty};
+}
+
+function parseInstructorSheet(ws,month){
+  const instructors={};
+  const hr=findHdr(ws,['教员','带教']);
+  if(hr<0)return instructors;
+
+  const ci={};
+  for(let c=0;c<15;c++){
+    const v=pStr(ws[XLSX.utils.encode_cell({r:hr,c})]?.v);
+    if((v==='教员'||v.includes('教员'))&&!ci.name)ci.name=c;
+    else if(v.includes('执勤')&&v.includes('总时长'))ci.duty=c;
+    else if(v.includes('带教')&&v.includes('总时长')&&!ci.teach)ci.teach=c;
+    else if(v.includes('EC')&&v.includes('带教'))ci.ec=c;
+    else if(v==='占比'||v.includes('占比'))ci.ratio=c;
+    else if(v.includes('持话筒')&&v.includes('带教'))ci.radio=c;
+    else if(v.includes('扣分'))ci.deduct=c;
+  }
+
+  // If no 执勤 column (months 1-2), shift ec/radio left
+  if(ci.teach===undefined&&ci.ec!==undefined){ci.ec=ci.radio;ci.radio=ci.ratio;}
+
+  for(let r=hr+1;r<100;r++){
+    const nm=pStr(ws[XLSX.utils.encode_cell({r,c:ci.name})]?.v);
+    if(!nm)break;
+    if(!instructors[nm])instructors[nm]={name:nm,monthly:{}};
+    instructors[nm].monthly[month]={
+      total_duty_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.duty})]?.v),
+      total_teaching_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.teach})]?.v),
+      ec_teaching_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.ec})]?.v),
+      student_radio_hours:pNum(ws[XLSX.utils.encode_cell({r,c:ci.radio})]?.v),
+      radio_ratio:pStr(ws[XLSX.utils.encode_cell({r,c:ci.ratio})]?.v),
+      deduction_count:pNum(ws[XLSX.utils.encode_cell({r,c:ci.deduct})]?.v)
+    };
+  }
+  return instructors;
+}
+
+function parseDeductionSheet(ws){
+  const records=[];
+  const hr=findHdr(ws,['能力指标','教员']);
+  if(hr<0)return records;
+
+  const ci={};
+  for(let c=0;c<10;c++){
+    const v=pStr(ws[XLSX.utils.encode_cell({r:hr,c})]?.v);
+    if((v==='学员'||v==='单位')&&!ci.student)ci.student=c;
+    else if(v.includes('教员')&&!ci.instructor)ci.instructor=c;
+    else if(v.includes('能力指标'))ci.ind=c;
+    else if(v.includes('能力要素'))ci.elem=c;
+    else if(v.includes('扣分'))ci.deduct=c;
+  }
+
+  let lastStudent='';
+  for(let r=hr+1;r<2000;r++){
+    const st=pStr(ws[XLSX.utils.encode_cell({r,c:ci.student})]?.v);
+    const inst=pStr(ws[XLSX.utils.encode_cell({r,c:ci.instructor})]?.v);
+    const ind=pStr(ws[XLSX.utils.encode_cell({r,c:ci.ind})]?.v);
+    const elem=pStr(ws[XLSX.utils.encode_cell({r,c:ci.elem})]?.v);
+    const ded=pStr(ws[XLSX.utils.encode_cell({r,c:ci.deduct})]?.v);
+    if(!st&&!inst&&!ind)break;
+    const student=(st||lastStudent).replace(/^学员:\s*/,'');
+    if(st)lastStudent=st.replace(/^学员:\s*/,'');
+    if(!inst||!ind)continue;
+    records.push({student,instructor:inst,indicator:ind,element:elem,deduction:ded});
+  }
+  return records;
+}
+
+function parseSimPlanSheet(ws){
+  const plans=[];
+  const hr=findHdr(ws,['学员','练习']);
+  if(hr<0)return plans;
+
+  const ci={};
+  for(let c=0;c<10;c++){
+    const v=pStr(ws[XLSX.utils.encode_cell({r:hr,c})]?.v);
+    if(v.includes('学员')&&!ci.student)ci.student=c;
+    else if(v.includes('练习'))ci.ex=c;
+    else if(v.includes('训练目标'))ci.obj=c;
+  }
+
+  for(let r=hr+1;r<100;r++){
+    const st=pStr(ws[XLSX.utils.encode_cell({r,c:ci.student})]?.v);
+    if(!st)break;
+    plans.push({student:st,exercises:pStr(ws[XLSX.utils.encode_cell({r,c:ci.ex})]?.v),objectives:pStr(ws[XLSX.utils.encode_cell({r,c:ci.obj})]?.v)});
+  }
+  return plans;
+}
+
+function parseProgressSheet(ws){
+  const progress=[];
+  const hr=findHdr(ws,['学员','模块']);
+  if(hr<0)return progress;
+
+  const ci={};
+  for(let c=0;c<25;c++){
+    const v=pStr(ws[XLSX.utils.encode_cell({r:hr,c})]?.v);
+    if(v.includes('学员')&&!ci.student)ci.student=c;
+    else if(v.includes('所在模块'))ci.sector=c;
+  }
+
+  for(let r=hr+1;r<100;r++){
+    const st=pStr(ws[XLSX.utils.encode_cell({r,c:ci.student})]?.v);
+    if(!st)break;
+    const sec=pStr(ws[XLSX.utils.encode_cell({r,c:ci.sector})]?.v);
+    const g=ci.student+1;
+    const getV=(off)=>pNum(ws[XLSX.utils.encode_cell({r,c:g+off})]?.v);
+    progress.push({
+      student:st,sector:sec,
+      total_sim_count:getV(0),total_hours:getV(1),time_limit_diff:getV(2),
+      departure_sim:getV(3),departure_hours:getV(4),departure_limit:getV(5),
+      approach_sim:getV(6),approach_hours:getV(7),approach_limit:getV(8),
+      north_sim:getV(9),north_hours:getV(10),north_limit:getV(11),
+      south_sim:getV(12),south_hours:getV(13),south_limit:getV(14)
+    });
+  }
+  return progress;
 }
 
 // ===== EVENT LISTENERS =====
