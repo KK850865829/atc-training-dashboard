@@ -341,7 +341,7 @@ select.input{cursor:pointer}
       <div class="card-title"><div class="icon" style="background:#722ed1">🌙</div>守夜合规分析</div>
       <div class="search-bar" style="margin-bottom:12px">
         <select class="input" id="nightDutyMonth" onchange="renderNightDuty()" style="max-width:120px">
-          <option value="4月">4月</option><option value="5月">5月</option><option value="6月" selected>6月</option>
+          <option value="4月">4月</option><option value="5月">5月</option><option value="6月">6月</option><option value="7月" selected>7月</option>
         </select>
         <span style="font-size:12px;color:var(--text3);align-self:center">排班锚点：2026年7月16日 A2组早晚班，四班倒轮转</span>
       </div>
@@ -563,7 +563,7 @@ function renderNightDuty() {
 }
 
 
-const MONTHS = ['1月','2月','3月','4月','5月','6月'];
+const MONTHS = ['1月','2月','3月','4月','5月','6月','7月'];
 const COLORS = ['#1890ff','#52c41a','#faad14','#ff4d4f','#722ed1','#13c2c2','#eb2f9a','#fa8c16','#2f54eb','#a0d911'];
 let currentMonth = '6月';
 let charts = {};
