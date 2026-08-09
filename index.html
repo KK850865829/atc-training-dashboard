@@ -326,6 +326,8 @@ select.input{cursor:pointer}
 <th class="sortable" onclick="sortSimProgressTable(4,'num')">时限差 <span class="sort-icon">⇅</span></th>
 <th class="sortable" onclick="sortSimProgressTable(5,'num')">离场数 <span class="sort-icon">⇅</span></th>
 <th class="sortable" onclick="sortSimProgressTable(6,'num')">进场数 <span class="sort-icon">⇅</span></th>
+<th class="sortable" onclick="sortSimProgressTable(7,'num')">北扇 <span class="sort-icon">⇅</span></th>
+<th class="sortable" onclick="sortSimProgressTable(8,'num')">南扇 <span class="sort-icon">⇅</span></th>
 </tr></thead><tbody></tbody></table></div>
     </div>
     <div class="card">
@@ -977,7 +979,8 @@ function renderSimulator() {
       const cls=p.time_limit_diff>0?'badge-success':p.time_limit_diff>-200?'badge-warning':'badge-danger';
       return `<tr><td><b>${p.student}</b></td><td>${p.sector}</td><td>${fmt(p.total_sim_count,0)}</td>
         <td>${fmt(p.total_hours)}</td><td><span class="badge ${cls}">${fmt(p.time_limit_diff)}</span></td>
-        <td>${fmt(p.departure_sim,0)}</td><td>${fmt(p.approach_sim,0)}</td></tr>`;
+        <td>${fmt(p.departure_sim,0)}</td><td>${fmt(p.approach_sim,0)}</td>
+        <td>${fmt(p.north_sim,0)}</td><td>${fmt(p.south_sim,0)}</td></tr>`;
     }).join('');
     const plans=RAW_DATA.simulator_plans['次月']||[];
     const tbody2=document.querySelector('#simPlanTable tbody');
