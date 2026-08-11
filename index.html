@@ -192,6 +192,7 @@ select.input{cursor:pointer}
   <div class="tab" data-tab="deductions">实操扣分</div>
   <div class="tab" data-tab="simulator">模拟机训练</div>
   <div class="tab" data-tab="nightduty">守夜合规</div>
+  <div class="tab" data-tab="compare">数据比对</div>
   <div class="tab" data-tab="ai">AI智能分析</div>
   <div class="tab" data-tab="upload">上传数据</div>
 </div>
@@ -354,6 +355,56 @@ select.input{cursor:pointer}
     <div class="card" id="nightDutyComplianceCard">
       <div class="card-title"><div class="icon" style="background:#52c41a">✓</div>合规审核结论</div>
       <div id="nightDutyComplianceResult"></div>
+    </div>
+  </div>
+
+  <!-- ========== DATA COMPARISON ========== -->
+  <div class="panel" id="panel-compare">
+    <div class="tabs" id="compareSubTabs" style="margin-bottom:20px;border-bottom:2px solid #f0f0f0;padding-bottom:0">
+      <div class="tab active" data-cmp="group" onclick="switchCompareTab('group')" style="cursor:pointer;padding:10px 20px;font-size:14px;border-bottom:2px solid #1890ff;margin-bottom:-2px;color:#1890ff;font-weight:600">班组比对</div>
+      <div class="tab" data-cmp="class" onclick="switchCompareTab('class')" style="cursor:pointer;padding:10px 20px;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-2px;color:#666">批次比对</div>
+      <div class="tab" data-cmp="month" onclick="switchCompareTab('month')" style="cursor:pointer;padding:10px 20px;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-2px;color:#666">月度比对</div>
+      <div class="tab" data-cmp="quarter" onclick="switchCompareTab('quarter')" style="cursor:pointer;padding:10px 20px;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-2px;color:#666">季度比对</div>
+    </div>
+    <div id="cmpViewGroup" class="cmp-view">
+      <div class="card">
+        <div class="card-title"><span class="icon" style="background:#1890ff">📊</span> 各班组核心指标对比 <span style="font-size:12px;color:#999;font-weight:normal;margin-left:8px" id="cmpGroupPeriod"></span></div>
+        <div class="chart-container" style="height:360px"><canvas id="chartCmpGroup"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">班组数据明细表 <span style="font-size:12px;color:#999;font-weight:normal">（人均值）</span></div>
+        <div class="scroll-x"><table id="tableCmpGroup"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div id="cmpViewClass" class="cmp-view" style="display:none">
+      <div class="card">
+        <div class="card-title"><span class="icon" style="background:#52c41a">📊</span> 各批次学员核心指标对比 <span style="font-size:12px;color:#999;font-weight:normal;margin-left:8px" id="cmpClassPeriod"></span></div>
+        <div class="chart-container" style="height:360px"><canvas id="chartCmpClass"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">批次数据明细表 <span style="font-size:12px;color:#999;font-weight:normal">（人均值）</span></div>
+        <div class="scroll-x"><table id="tableCmpClass"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div id="cmpViewMonth" class="cmp-view" style="display:none">
+      <div class="card">
+        <div class="card-title"><span class="icon" style="background:#faad14">📈</span> 月度核心指标趋势</div>
+        <div class="chart-container" style="height:360px"><canvas id="chartCmpMonth"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">月度数据明细表 <span style="font-size:12px;color:#999;font-weight:normal">（全员汇总）</span></div>
+        <div class="scroll-x"><table id="tableCmpMonth"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div id="cmpViewQuarter" class="cmp-view" style="display:none">
+      <div class="card">
+        <div class="card-title"><span class="icon" style="background:#722ed1">📊</span> 各季度核心指标对比</div>
+        <div class="chart-container" style="height:360px"><canvas id="chartCmpQuarter"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">季度数据明细表 <span style="font-size:12px;color:#999;font-weight:normal">（全员汇总）</span></div>
+        <div class="scroll-x"><table id="tableCmpQuarter"><thead></thead><tbody></tbody></table></div>
+      </div>
     </div>
   </div>
 
@@ -607,6 +658,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
     if(tab.dataset.tab==='nightduty') renderNightDuty();
+    if(tab.dataset.tab==='compare') renderCompare();
   });
 });
 
@@ -986,6 +1038,332 @@ function renderSimulator() {
     const tbody2=document.querySelector('#simPlanTable tbody');
     tbody2.innerHTML=plans.map(p=>`<tr><td><b>${p.student}</b></td><td style="max-width:220px">${p.exercises}</td><td>${p.objectives}</td></tr>`).join('');
   } catch(e) { console.error('renderSimulator error:', e); }
+}
+
+// ===== DATA COMPARISON MODULE =====
+let cmpCharts = {};
+let currentCmpTab = 'group';
+const CMP_METRICS = [
+  {key:'total_training_hours', label:'总见习(h)', agg:'avg'},
+  {key:'actual_radio_hours', label:'持话筒(h)', agg:'avg'},
+  {key:'total_duty_hours', label:'执勤时长(h)', agg:'avg'},
+  {key:'training_duty_ratio', label:'见习/执勤比', agg:'avg', fmt:'pct'},
+  {key:'total_deduction', label:'实操扣分', agg:'avg'},
+  {key:'deduction_per_hour', label:'每小时扣分', agg:'avg'},
+  {key:'sim_count', label:'模拟机(次)', agg:'sum'},
+  {key:'night_count', label:'守夜(次)', agg:'sum'},
+  {key:'night_total_duty', label:'守夜执勤(h)', agg:'sum'}
+];
+const CMP_COLORS = ['rgba(24,144,255,0.7)','rgba(82,196,26,0.7)','rgba(250,173,20,0.7)','rgba(114,46,209,0.7)','rgba(255,77,79,0.7)','rgba(19,194,194,0.7)'];
+const CMP_BORDERS = ['#1890ff','#52c41a','#faad14','#722ed1','#ff4d4f','#13c2c2'];
+
+function switchCompareTab(tab) {
+  currentCmpTab = tab;
+  document.querySelectorAll('#compareSubTabs .tab').forEach(t => {
+    const isActive = t.dataset.cmp === tab;
+    t.style.borderBottom = isActive ? '2px solid #1890ff' : '2px solid transparent';
+    t.style.color = isActive ? '#1890ff' : '#666';
+    t.style.fontWeight = isActive ? '600' : 'normal';
+  });
+  document.querySelectorAll('.cmp-view').forEach(v => v.style.display='none');
+  const viewMap = {group:'cmpViewGroup',class:'cmpViewClass',month:'cmpViewMonth',quarter:'cmpViewQuarter'};
+  document.getElementById(viewMap[tab]).style.display='';
+  renderCompare();
+}
+
+function renderCompare() {
+  if(currentCmpTab==='group') renderCmpGroup();
+  else if(currentCmpTab==='class') renderCmpClass();
+  else if(currentCmpTab==='month') renderCmpMonth();
+  else if(currentCmpTab==='quarter') renderCmpQuarter();
+}
+
+function destroyCmpChart(key) { if(cmpCharts[key]) { cmpCharts[key].destroy(); cmpCharts[key]=null; } }
+
+function getStudentMonthData(students, months) {
+  // Returns array of {name, group, class, month, data} for all student-month combos
+  const result = [];
+  Object.keys(students).forEach(name => {
+    const s = students[name];
+    months.forEach(m => {
+      const md = s.monthly[m];
+      if(!md) return;
+      const g = md.group || s.group || '';
+      const c = md.class || s.class || '';
+      result.push({name, group:g, class:c, month:m, data:md});
+    });
+  });
+  return result;
+}
+
+function aggregate(entries, mode) {
+  // mode: 'avg' = per-student average, 'sum' = total
+  const agg = {};
+  CMP_METRICS.forEach(met => {
+    let vals = entries.map(e => e.data[met.key]).filter(v => v!==undefined && v!==null && v!==-1);
+    if(vals.length === 0) { agg[met.key] = {value:0, count:0}; return; }
+    if(mode==='avg') {
+      agg[met.key] = {value: vals.reduce((a,b)=>a+b,0)/vals.length, count: vals.length};
+    } else {
+      agg[met.key] = {value: vals.reduce((a,b)=>a+b,0), count: vals.length};
+    }
+  });
+  agg._studentCount = new Set(entries.map(e=>e.name)).size;
+  return agg;
+}
+
+function cmpTableStyle() { return 'style="border-collapse:collapse;width:100%;font-size:13px"'; }
+function cmpTh(v) { return `<th style="padding:10px 12px;background:#fafafa;border:1px solid #f0f0f0;font-weight:600;text-align:center;white-space:nowrap">${v}</th>`; }
+function cmpTd(v, highlight) {
+  const bg = highlight ? 'background:#e6f7ff;font-weight:600' : '';
+  return `<td style="padding:8px 12px;border:1px solid #f0f0f0;text-align:center;${bg}">${v}</td>`;
+}
+function fmtCmp(v, met) {
+  if(v===undefined||v===null||v===0&&met.key==='night_count') return '-';
+  if(met.fmt==='pct') return (v*100).toFixed(1)+'%';
+  if(met.key==='deduction_per_hour') return v.toFixed(3);
+  if(met.agg==='sum') return Math.round(v).toString();
+  return v.toFixed(1);
+}
+
+// ===== GROUP COMPARISON =====
+function renderCmpGroup() {
+  try {
+    const students = RAW_DATA.students;
+    const month = currentMonth;
+    document.getElementById('cmpGroupPeriod').textContent = `（当前月份：${month}）`;
+    // Group students by their month-specific group
+    const groups = {};
+    Object.keys(students).forEach(name => {
+      const s = students[name];
+      const md = s.monthly[month];
+      if(!md) return;
+      const g = md.group || s.group || '';
+      if(!g) return;
+      if(!groups[g]) groups[g] = [];
+      groups[g].push({name, data:md});
+    });
+    const groupNames = GROUP_ORDER.filter(g => groups[g] && groups[g].length > 0);
+    if(groupNames.length === 0) return;
+    // Aggregate per group
+    const aggData = {};
+    groupNames.forEach(g => { aggData[g] = aggregate(groups[g], 'avg'); });
+    // Chart - grouped bar chart for key metrics
+    const chartMetrics = CMP_METRICS.filter(m => m.key !== 'training_duty_ratio' && m.key !== 'deduction_per_hour');
+    const datasets = groupNames.map((g, i) => ({
+      label: g + '组',
+      data: chartMetrics.map(m => {
+        const v = aggData[g][m.key].value;
+        return m.fmt==='pct' ? v*100 : v;
+      }),
+      backgroundColor: CMP_COLORS[i % CMP_COLORS.length],
+      borderColor: CMP_BORDERS[i % CMP_BORDERS.length],
+      borderWidth: 1, borderRadius: 4
+    }));
+    destroyCmpChart('group');
+    const ctx = document.getElementById('chartCmpGroup').getContext('2d');
+    cmpCharts.group = new Chart(ctx, {
+      type:'bar',
+      data:{ labels: chartMetrics.map(m=>m.label), datasets },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'top'},tooltip:{callbacks:{label:ctx=>{
+          const mi = ctx.dataIndex; const m = chartMetrics[mi];
+          return ctx.dataset.label+': '+fmtCmp(ctx.raw, m);
+        }}}},
+        scales:{y:{beginAtZero:true},x:{grid:{display:false}}}
+      }
+    });
+    // Table
+    const thead = document.querySelector('#tableCmpGroup thead');
+    const tbody = document.querySelector('#tableCmpGroup tbody');
+    thead.innerHTML = '<tr>' + cmpTh('指标') + groupNames.map(g => cmpTh(g+'组 ('+aggData[g]._studentCount+'人)')).join('') + '</tr>';
+    tbody.innerHTML = CMP_METRICS.map(met => {
+      const vals = groupNames.map(g => aggData[g][met.key].value);
+      const maxVal = Math.max(...vals);
+      return '<tr><td style="padding:8px 12px;border:1px solid #f0f0f0;font-weight:600;background:#fafafa;white-space:nowrap">'+met.label+'</td>' +
+        groupNames.map(g => {
+          const v = aggData[g][met.key].value;
+          return cmpTd(fmtCmp(v, met), Math.abs(v-maxVal)<0.01 && vals.length>1);
+        }).join('') + '</tr>';
+    }).join('');
+  } catch(e) { console.error('renderCmpGroup error:', e); }
+}
+
+// ===== CLASS COMPARISON =====
+function renderCmpClass() {
+  try {
+    const students = RAW_DATA.students;
+    const month = currentMonth;
+    document.getElementById('cmpClassPeriod').textContent = `（当前月份：${month}）`;
+    const classes = {};
+    Object.keys(students).forEach(name => {
+      const s = students[name];
+      const md = s.monthly[month];
+      if(!md) return;
+      const c = md.class || s.class || '';
+      if(!c) return;
+      if(!classes[c]) classes[c] = [];
+      classes[c].push({name, data:md});
+    });
+    const classNames = Object.keys(classes).sort();
+    if(classNames.length === 0) return;
+    const aggData = {};
+    classNames.forEach(c => { aggData[c] = aggregate(classes[c], 'avg'); });
+    // Chart
+    const chartMetrics = CMP_METRICS.filter(m => m.key !== 'training_duty_ratio' && m.key !== 'deduction_per_hour');
+    const datasets = classNames.map((c, i) => ({
+      label: c + '届',
+      data: chartMetrics.map(m => {
+        const v = aggData[c][m.key].value;
+        return m.fmt==='pct' ? v*100 : v;
+      }),
+      backgroundColor: CMP_COLORS[i % CMP_COLORS.length],
+      borderColor: CMP_BORDERS[i % CMP_BORDERS.length],
+      borderWidth: 1, borderRadius: 4
+    }));
+    destroyCmpChart('class');
+    const ctx = document.getElementById('chartCmpClass').getContext('2d');
+    cmpCharts.class = new Chart(ctx, {
+      type:'bar',
+      data:{ labels: chartMetrics.map(m=>m.label), datasets },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'top'},tooltip:{callbacks:{label:ctx=>{
+          const mi = ctx.dataIndex; const m = chartMetrics[mi];
+          return ctx.dataset.label+': '+fmtCmp(ctx.raw, m);
+        }}}},
+        scales:{y:{beginAtZero:true},x:{grid:{display:false}}}
+      }
+    });
+    // Table
+    const thead = document.querySelector('#tableCmpClass thead');
+    const tbody = document.querySelector('#tableCmpClass tbody');
+    thead.innerHTML = '<tr>' + cmpTh('指标') + classNames.map(c => cmpTh(c+'届 ('+aggData[c]._studentCount+'人)')).join('') + '</tr>';
+    tbody.innerHTML = CMP_METRICS.map(met => {
+      const vals = classNames.map(c => aggData[c][met.key].value);
+      const maxVal = Math.max(...vals);
+      return '<tr><td style="padding:8px 12px;border:1px solid #f0f0f0;font-weight:600;background:#fafafa;white-space:nowrap">'+met.label+'</td>' +
+        classNames.map(c => {
+          const v = aggData[c][met.key].value;
+          return cmpTd(fmtCmp(v, met), Math.abs(v-maxVal)<0.01 && vals.length>1);
+        }).join('') + '</tr>';
+    }).join('');
+  } catch(e) { console.error('renderCmpClass error:', e); }
+}
+
+// ===== MONTH COMPARISON =====
+function renderCmpMonth() {
+  try {
+    const students = RAW_DATA.students;
+    const months = MONTHS;
+    // Aggregate per month (all students, sum for totals)
+    const monthAgg = {};
+    months.forEach(m => {
+      const entries = [];
+      Object.keys(students).forEach(name => {
+        const md = students[name].monthly[m];
+        if(md) entries.push({name, data:md});
+      });
+      monthAgg[m] = aggregate(entries, 'avg');
+    });
+    const activeMonths = months.filter(m => monthAgg[m] && monthAgg[m]._studentCount > 0);
+    if(activeMonths.length === 0) return;
+    // Line chart for trends
+    const chartMetrics = CMP_METRICS.filter(m => m.key !== 'training_duty_ratio' && m.key !== 'deduction_per_hour');
+    const datasets = chartMetrics.map((met, i) => ({
+      label: met.label,
+      data: activeMonths.map(m => {
+        const v = monthAgg[m][met.key].value;
+        return met.fmt==='pct' ? +(v*100).toFixed(1) : +v.toFixed(2);
+      }),
+      borderColor: CMP_BORDERS[i % CMP_BORDERS.length],
+      backgroundColor: CMP_COLORS[i % CMP_COLORS.length],
+      borderWidth: 2, tension: 0.3, fill: false, pointRadius: 4, pointHoverRadius: 6
+    }));
+    destroyCmpChart('month');
+    const ctx = document.getElementById('chartCmpMonth').getContext('2d');
+    cmpCharts.month = new Chart(ctx, {
+      type:'line',
+      data:{ labels: activeMonths, datasets },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'top'},tooltip:{mode:'index',intersect:false}},
+        scales:{y:{beginAtZero:true},x:{grid:{display:false}}}
+      }
+    });
+    // Table
+    const thead = document.querySelector('#tableCmpMonth thead');
+    const tbody = document.querySelector('#tableCmpMonth tbody');
+    thead.innerHTML = '<tr>' + cmpTh('指标') + activeMonths.map(m => cmpTh(m+' ('+monthAgg[m]._studentCount+'人)')).join('') + '</tr>';
+    tbody.innerHTML = CMP_METRICS.map(met => {
+      return '<tr><td style="padding:8px 12px;border:1px solid #f0f0f0;font-weight:600;background:#fafafa;white-space:nowrap">'+met.label+'</td>' +
+        activeMonths.map(m => cmpTd(fmtCmp(monthAgg[m][met.key].value, met))).join('') + '</tr>';
+    }).join('');
+  } catch(e) { console.error('renderCmpMonth error:', e); }
+}
+
+// ===== QUARTER COMPARISON =====
+function renderCmpQuarter() {
+  try {
+    const students = RAW_DATA.students;
+    const QUARTERS = {
+      'Q1(1-3月)': ['1月','2月','3月'],
+      'Q2(4-6月)': ['4月','5月','6月'],
+      'Q3(7-9月)': ['7月','8月','9月'],
+      'Q4(10-12月)': ['10月','11月','12月']
+    };
+    const qNames = Object.keys(QUARTERS);
+    const qAgg = {};
+    qNames.forEach(qn => {
+      const qMonths = QUARTERS[qn];
+      const entries = [];
+      Object.keys(students).forEach(name => {
+        qMonths.forEach(m => {
+          const md = students[name].monthly[m];
+          if(md) entries.push({name, data:md});
+        });
+      });
+      qAgg[qn] = aggregate(entries, 'avg');
+    });
+    const activeQ = qNames.filter(q => qAgg[q]._studentCount > 0);
+    if(activeQ.length === 0) return;
+    // Chart
+    const chartMetrics = CMP_METRICS.filter(m => m.key !== 'training_duty_ratio' && m.key !== 'deduction_per_hour');
+    const datasets = activeQ.map((q, i) => ({
+      label: q,
+      data: chartMetrics.map(m => {
+        const v = qAgg[q][m.key].value;
+        return m.fmt==='pct' ? +(v*100).toFixed(1) : +v.toFixed(2);
+      }),
+      backgroundColor: CMP_COLORS[i % CMP_COLORS.length],
+      borderColor: CMP_BORDERS[i % CMP_BORDERS.length],
+      borderWidth: 1, borderRadius: 4
+    }));
+    destroyCmpChart('quarter');
+    const ctx = document.getElementById('chartCmpQuarter').getContext('2d');
+    cmpCharts.quarter = new Chart(ctx, {
+      type:'bar',
+      data:{ labels: chartMetrics.map(m=>m.label), datasets },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'top'},tooltip:{callbacks:{label:ctx=>{
+          const mi = ctx.dataIndex; const m = chartMetrics[mi];
+          return ctx.dataset.label+': '+fmtCmp(ctx.raw, m);
+        }}}},
+        scales:{y:{beginAtZero:true},x:{grid:{display:false}}}
+      }
+    });
+    // Table
+    const thead = document.querySelector('#tableCmpQuarter thead');
+    const tbody = document.querySelector('#tableCmpQuarter tbody');
+    thead.innerHTML = '<tr>' + cmpTh('指标') + activeQ.map(q => cmpTh(q+' ('+qAgg[q]._studentCount+'人次)')).join('') + '</tr>';
+    tbody.innerHTML = CMP_METRICS.map(met => {
+      const vals = activeQ.map(q => qAgg[q][met.key].value);
+      const maxVal = Math.max(...vals);
+      return '<tr><td style="padding:8px 12px;border:1px solid #f0f0f0;font-weight:600;background:#fafafa;white-space:nowrap">'+met.label+'</td>' +
+        activeQ.map(q => {
+          const v = qAgg[q][met.key].value;
+          return cmpTd(fmtCmp(v, met), Math.abs(v-maxVal)<0.01 && vals.length>1);
+        }).join('') + '</tr>';
+    }).join('');
+  } catch(e) { console.error('renderCmpQuarter error:', e); }
 }
 
 // ===== AI ANALYSIS =====
