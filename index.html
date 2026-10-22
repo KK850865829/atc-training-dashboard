@@ -651,9 +651,9 @@ function setGlobalMonth(m) {
 }
 
 // ===== TAB NAVIGATION =====
-document.querySelectorAll('.tab').forEach(tab => {
+document.querySelectorAll('#mainTabs .tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('#mainTabs .tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
@@ -845,7 +845,7 @@ function showStudentDetail(name) {
   const s=RAW_DATA.students[name]; if(!s) return;
   selectedStudent=name;
   // Switch to students tab
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelector('[data-tab="students"]').classList.add('active');
   document.getElementById('panel-students').classList.add('active');
@@ -934,7 +934,7 @@ function renderInstructorTable() {
 function showInstructorDetail(name) {
   const inst=RAW_DATA.instructors[name]; if(!inst) return;
   selectedInstructor=name;
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#mainTabs .tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelector('[data-tab="instructors"]').classList.add('active');
   document.getElementById('panel-instructors').classList.add('active');
@@ -2180,7 +2180,7 @@ function updateAdminUI() {
     if (uploadTab) uploadTab.style.display = 'none';
     // If currently on upload panel, switch to overview
     if (uploadPanel && uploadPanel.classList.contains('active')) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('#mainTabs .tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       document.querySelector('.tab[data-tab="overview"]').classList.add('active');
       document.getElementById('panel-overview').classList.add('active');
