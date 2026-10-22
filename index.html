@@ -1059,6 +1059,12 @@ const CMP_BORDERS = ['#1890ff','#52c41a','#faad14','#722ed1','#ff4d4f','#13c2c2'
 
 function switchCompareTab(tab) {
   currentCmpTab = tab;
+  // Ensure the top-level 数据比对 tab and its panel are active, so sub-tab
+  // clicks show content directly without needing to re-click the main tab.
+  document.querySelectorAll('#mainTabs .tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === 'compare'));
+  document.querySelectorAll('.panel').forEach(p =>
+    p.classList.toggle('active', p.id === 'panel-compare'));
   document.querySelectorAll('#compareSubTabs .tab').forEach(t => {
     const isActive = t.dataset.cmp === tab;
     t.style.borderBottom = isActive ? '2px solid #1890ff' : '2px solid transparent';
